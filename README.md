@@ -68,22 +68,22 @@ The browser script does this:
    - Ruby Marshal files usually begin with the bytes `04 08`.
 3. Searches the binary data for the inventory field named:
 
-```text
-@armors
-```
+   ```text
+   @armors
+   ```
 
-1. Confirms that the value after `@armors` is a Ruby Marshal hash.
+4. Confirms that the value after `@armors` is a Ruby Marshal hash.
    - Ruby Marshal uses byte `0x7B` for a hash.
-2. Reads the hash length and walks through the armor inventory entries.
-3. Looks for armor ID `84`.
-4. If armor `84` exists but has a count lower than `1`, it updates the count to `1`.
-5. If armor `84` does not exist, it inserts a new hash entry for:
+5. Reads the hash length and walks through the armor inventory entries.
+6. Looks for armor ID `84`.
+7. If armor `84` exists but has a count lower than `1`, it updates the count to `1`.
+8. If armor `84` does not exist, it inserts a new hash entry for:
 
-```text
-84 => 1
-```
+   ```text
+   84 => 1
+   ```
 
-1. Downloads the patched bytes as a new `.rxdata` file.
+9. Downloads the patched bytes as a new `.rxdata` file.
 
 So the patcher is not a general save editor. It only understands enough of Ruby Marshal to safely find and patch the `@armors` inventory hash.
 
