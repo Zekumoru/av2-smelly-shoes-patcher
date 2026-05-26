@@ -228,7 +228,7 @@
       statusBox.textContent = 'Reading save...';
       const input = new Uint8Array(await selectedFile.arrayBuffer());
       const result = patchArmor84(input);
-      const outName = patchedName(selectedFile.name);
+      const outName = selectedFile.name;
 
       const blob = new Blob([result.bytes], { type: 'application/octet-stream' });
       const url = URL.createObjectURL(blob);
@@ -253,12 +253,6 @@
     patchButton.disabled = false;
     clearButton.disabled = false;
     statusBox.textContent = `Selected: ${file.name}\nReady to add ${ITEM_NAME}.`;
-  }
-
-  function patchedName(name) {
-    const dot = name.lastIndexOf('.');
-    if (dot > 0) return name.slice(0, dot) + '_SmellyShoes' + name.slice(dot);
-    return name + '_SmellyShoes.rxdata';
   }
 
   function asciiBytes(str) {
