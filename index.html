@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Smelly Shoes RXDATA Save Patcher</title>
+  <style>
+    :root {
+      color-scheme: dark light;
+      --border: color-mix(in srgb, currentColor 35%, transparent);
+      --soft: color-mix(in srgb, currentColor 10%, transparent);
+      --softer: color-mix(in srgb, currentColor 6%, transparent);
+      --accent: #7c9cff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      max-width: 820px;
+      margin: 40px auto;
+      padding: 0 18px;
+      line-height: 1.45;
+    }
+
+    main {
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 24px;
+      box-shadow: 0 10px 30px color-mix(in srgb, currentColor 8%, transparent);
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: clamp(1.55rem, 4vw, 2.15rem);
+      line-height: 1.1;
+    }
+
+    p { margin: 10px 0; }
+    .muted { opacity: .78; }
+
+    code {
+      padding: 0.1em 0.25em;
+      border-radius: 5px;
+      background: var(--soft);
+    }
+
+    .drop-zone {
+      margin: 22px 0 14px;
+      border: 2px dashed var(--border);
+      border-radius: 18px;
+      padding: 34px 20px;
+      text-align: center;
+      background: var(--softer);
+      transition: transform .12s ease, border-color .12s ease, background .12s ease;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .drop-zone:hover,
+    .drop-zone:focus-visible {
+      border-color: var(--accent);
+      outline: none;
+    }
+
+    .drop-zone.drag-over {
+      transform: scale(1.01);
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 18%, transparent);
+    }
+
+    .drop-icon {
+      font-size: 2.4rem;
+      line-height: 1;
+      margin-bottom: 10px;
+    }
+
+    .drop-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .file-name {
+      display: none;
+      margin-top: 12px;
+      padding: 9px 11px;
+      border-radius: 10px;
+      background: var(--soft);
+      word-break: break-all;
+    }
+
+    .file-name.visible { display: inline-block; }
+
+    input[type="file"] {
+      position: absolute;
+      inline-size: 1px;
+      block-size: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+      clip-path: inset(50%);
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 14px;
+    }
+
+    button {
+      font: inherit;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      background: var(--soft);
+      color: inherit;
+    }
+
+    button.primary {
+      background: color-mix(in srgb, var(--accent) 25%, transparent);
+      border-color: color-mix(in srgb, var(--accent) 80%, currentColor 20%);
+      font-weight: 700;
+    }
+
+    button:disabled {
+      opacity: .55;
+      cursor: not-allowed;
+    }
+
+    #status {
+      margin-top: 16px;
+      white-space: pre-wrap;
+      border-radius: 12px;
+      padding: 12px;
+      background: var(--softer);
+      min-height: 48px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Smelly Shoes RXDATA Save Patcher</h1>
+    <p>This local page patches an RPG Maker RXDATA save by adding the unique <strong>Smelly Shoes</strong> armor item, also known internally as <code>@armors[84] = 1</code>.</p>
+    <p class="muted">The save stays on your computer. This page does not upload anything. Back up your save first, then download the patched copy and rename it back to the slot name the game expects.</p>
+
+    <input id="file" type="file" accept=".rxdata,application/octet-stream" />
+
+    <section id="dropZone" class="drop-zone" tabindex="0" role="button" aria-label="Drop an RXDATA save file here, or click to choose one">
+      <div class="drop-icon" aria-hidden="true">👟</div>
+      <div class="drop-title">Drop your <code>SaveX.rxdata</code> file here</div>
+      <div class="muted">or click this box to choose a file</div>
+      <div id="fileName" class="file-name"></div>
+    </section>
+
+    <div class="actions">
+      <button id="patch" class="primary" disabled>Patch save with Smelly Shoes</button>
+      <button id="clear" disabled>Clear selected file</button>
+    </div>
+
+    <div id="status" aria-live="polite">Waiting for a save file.</div>
+  </main>
+
+<script>
+(() => {
+  const ARMOR_ID = 84;
+  const MIN_COUNT = 1;
+  const ITEM_NAME = 'Smelly Shoes';
+
+  const fileInput = document.getElementById('file');
+  const dropZone = document.getElementById('dropZone');
+  const fileName = document.getElementById('fileName');
+  const patchButton = document.getElementById('patch');
+  const clearButton = document.getElementById('clear');
+  const statusBox = document.getElementById('status');
+
+  let selectedFile = null;
+
+  // Prevent the browser from navigating away if a file is dropped outside the box.
+  for (const eventName of ['dragenter', 'dragover', 'dragleave', 'drop']) {
+    document.addEventListener(eventName, event => event.preventDefault());
+  }
+
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      fileInput.click();
+    }
+  });
+
+  dropZone.addEventListener('dragenter', () => dropZone.classList.add('drag-over'));
+  dropZone.addEventListener('dragover', () => dropZone.classList.add('drag-over'));
+  dropZone.addEventListener('dragleave', event => {
+    if (!dropZone.contains(event.relatedTarget)) dropZone.classList.remove('drag-over');
+  });
+
+  dropZone.addEventListener('drop', event => {
+    dropZone.classList.remove('drag-over');
+    const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+    if (!file) return;
+    selectFile(file);
+  });
+
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) return;
+    selectFile(file);
+  });
+
+  clearButton.addEventListener('click', () => {
+    selectedFile = null;
+    fileInput.value = '';
+    fileName.textContent = '';
+    fileName.classList.remove('visible');
+    patchButton.disabled = true;
+    clearButton.disabled = true;
+    statusBox.textContent = 'Waiting for a save file.';
+  });
+
+  patchButton.addEventListener('click', async () => {
+    if (!selectedFile) return;
+
+    try {
+      statusBox.textContent = 'Reading save...';
+      const input = new Uint8Array(await selectedFile.arrayBuffer());
+      const result = patchArmor84(input);
+      const outName = patchedName(selectedFile.name);
+
+      const blob = new Blob([result.bytes], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = outName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+      statusBox.textContent = `${result.message}\nOutput: ${outName}\nOriginal size: ${input.length} bytes\nPatched size: ${result.bytes.length} bytes`;
+    } catch (err) {
+      statusBox.textContent = 'Patch failed: ' + (err && err.message ? err.message : String(err));
+    }
+  });
+
+  function selectFile(file) {
+    selectedFile = file;
+    fileName.textContent = `${file.name} (${file.size.toLocaleString()} bytes)`;
+    fileName.classList.add('visible');
+    patchButton.disabled = false;
+    clearButton.disabled = false;
+    statusBox.textContent = `Selected: ${file.name}\nReady to add ${ITEM_NAME}.`;
+  }
+
+  function patchedName(name) {
+    const dot = name.lastIndexOf('.');
+    if (dot > 0) return name.slice(0, dot) + '_SmellyShoes' + name.slice(dot);
+    return name + '_SmellyShoes.rxdata';
+  }
+
+  function asciiBytes(str) {
+    return Array.from(str, c => c.charCodeAt(0));
+  }
+
+  function indexOfBytes(data, needle, from = 0) {
+    outer: for (let i = from; i <= data.length - needle.length; i++) {
+      for (let j = 0; j < needle.length; j++) {
+        if (data[i + j] !== needle[j]) continue outer;
+      }
+      return i;
+    }
+    return -1;
+  }
+
+  function readLong(data, pos) {
+    if (pos >= data.length) throw new Error('Unexpected end of file while reading Marshal integer.');
+    const first = data[pos++];
+    if (first === 0) return { value: 0, next: pos };
+    if (first >= 5 && first <= 127) return { value: first - 5, next: pos };
+    if (first >= 128) return { value: first - 256 + 5, next: pos };
+    if (first >= 1 && first <= 4) {
+      let value = 0;
+      for (let i = 0; i < first; i++) {
+        if (pos + i >= data.length) throw new Error('Unexpected end of file while reading Marshal integer.');
+        value += data[pos + i] * Math.pow(256, i);
+      }
+      return { value, next: pos + first };
+    }
+    const count = 256 - first;
+    let value = 0;
+    for (let i = 0; i < count; i++) {
+      if (pos + i >= data.length) throw new Error('Unexpected end of file while reading Marshal integer.');
+      value += data[pos + i] * Math.pow(256, i);
+    }
+    return { value: value - Math.pow(2, 8 * count), next: pos + count };
+  }
+
+  function encodeLong(value) {
+    if (!Number.isInteger(value)) throw new Error('Cannot encode non-integer value.');
+    if (value === 0) return [0];
+    if (value > 0 && value < 123) return [value + 5];
+    if (value < 0 && value > -124) return [(value - 5) & 0xff];
+
+    if (value > 0) {
+      const bytes = [];
+      let n = value;
+      while (n > 0) {
+        bytes.push(n & 0xff);
+        n = Math.floor(n / 256);
+      }
+      if (bytes.length > 4) throw new Error('Integer too large for this patcher.');
+      return [bytes.length, ...bytes];
+    }
+
+    for (let count = 1; count <= 4; count++) {
+      const min = -Math.pow(2, 8 * count);
+      if (value >= min) {
+        let twos = Math.pow(2, 8 * count) + value;
+        const bytes = [];
+        for (let i = 0; i < count; i++) {
+          bytes.push(twos & 0xff);
+          twos = Math.floor(twos / 256);
+        }
+        return [256 - count, ...bytes];
+      }
+    }
+    throw new Error('Integer too small for this patcher.');
+  }
+
+  function concatParts(parts) {
+    const size = parts.reduce((sum, part) => sum + part.length, 0);
+    const out = new Uint8Array(size);
+    let pos = 0;
+    for (const part of parts) {
+      out.set(part, pos);
+      pos += part.length;
+    }
+    return out;
+  }
+
+  function replaceRange(data, start, end, replacement) {
+    return concatParts([
+      data.slice(0, start),
+      Uint8Array.from(replacement),
+      data.slice(end),
+    ]);
+  }
+
+  function patchArmor84(inputBytes) {
+    const data = inputBytes instanceof Uint8Array ? inputBytes : new Uint8Array(inputBytes);
+    if (data.length < 4 || data[0] !== 0x04 || data[1] !== 0x08) {
+      throw new Error('This does not look like an RXDATA Ruby Marshal save file.');
+    }
+
+    const marker = asciiBytes('@armors');
+    let searchFrom = 0;
+
+    while (true) {
+      const markerPos = indexOfBytes(data, marker, searchFrom);
+      if (markerPos < 0) break;
+      searchFrom = markerPos + 1;
+
+      const hashTypePos = markerPos + marker.length;
+      if (hashTypePos >= data.length || data[hashTypePos] !== 0x7b) continue; // Ruby Marshal Hash, '{'
+
+      try {
+        const lengthInfo = readLong(data, hashTypePos + 1);
+        const hashLength = lengthInfo.value;
+        const lengthStart = hashTypePos + 1;
+        const lengthEnd = lengthInfo.next;
+        if (hashLength < 0 || hashLength > 10000) throw new Error('Invalid @armors hash length.');
+
+        let cursor = lengthEnd;
+        let found = null;
+        for (let i = 0; i < hashLength; i++) {
+          if (cursor >= data.length || data[cursor] !== 0x69) throw new Error('Unexpected non-integer armor ID in @armors.');
+          const keyInfo = readLong(data, cursor + 1);
+          const key = keyInfo.value;
+          const valueStart = keyInfo.next;
+          if (valueStart >= data.length || data[valueStart] !== 0x69) throw new Error('Unexpected non-integer armor count in @armors.');
+          const valueInfo = readLong(data, valueStart + 1);
+          const value = valueInfo.value;
+          const valueEnd = valueInfo.next;
+
+          if (key === ARMOR_ID) {
+            found = { valueStart, valueEnd, value };
+            break;
+          }
+          cursor = valueEnd;
+        }
+
+        if (found) {
+          if (found.value >= MIN_COUNT) {
+            return { bytes: data, changed: false, message: `${ITEM_NAME} is already present with count ${found.value}.` };
+          }
+          const replacement = [0x69, ...encodeLong(MIN_COUNT)];
+          return {
+            bytes: replaceRange(data, found.valueStart, found.valueEnd, replacement),
+            changed: true,
+            message: `Updated ${ITEM_NAME} count from ${found.value} to ${MIN_COUNT}.`,
+          };
+        }
+
+        const newLength = encodeLong(hashLength + 1);
+        const newEntry = [0x69, ...encodeLong(ARMOR_ID), 0x69, ...encodeLong(MIN_COUNT)];
+        const patched = concatParts([
+          data.slice(0, lengthStart),
+          Uint8Array.from(newLength),
+          data.slice(lengthEnd, cursor),
+          Uint8Array.from(newEntry),
+          data.slice(cursor),
+        ]);
+        return { bytes: patched, changed: true, message: `Added ${ITEM_NAME} as Armor #${ARMOR_ID} with count ${MIN_COUNT}.` };
+      } catch (_) {
+        // This @armors-looking byte sequence was not the inventory hash; keep searching.
+      }
+    }
+
+    throw new Error('Could not find a valid Game_Party @armors inventory hash in this save.');
+  }
+})();
+</script>
+</body>
+</html>
